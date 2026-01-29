@@ -1,6 +1,7 @@
 # Motive Device SDK
 
 A Flutter package for integrating Motive therapy devices via Bluetooth Low Energy (BLE).
+Includes support for flutter_blue_plus and permission_handler packages, you don't need to add them in your app.
 
 ## Features
 
