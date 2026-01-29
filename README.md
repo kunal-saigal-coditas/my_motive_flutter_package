@@ -18,7 +18,7 @@ Add this to your `pubspec.yaml`:
 ```yaml
 dependencies:
   my_motive_package:
-    path: ../my_motive_package  # For local development
+    path: https://github.com/kunal-saigal-coditas/my_motive_flutter_package.git  # For local development
     # Or for Git:
     # git:
     #   url: https://github.com/your-org/my_motive_package.git
