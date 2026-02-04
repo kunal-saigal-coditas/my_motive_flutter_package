@@ -30,6 +30,21 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 /// });
 /// ```
 class DeviceHelpers {
+  /// Extracts a unique identifier for the controller.
+  ///
+  /// For Motive devices, returns the remote ID string.
+  /// Falls back to remote ID for other device types.
+  static String extractControllerId(final BluetoothDevice device) {
+    final String name = device.platformName;
+
+    if (name.toLowerCase().contains('motive')) {
+      // For Motive devices, use the device ID as controller ID
+      return device.remoteId.str;
+    }
+
+    return device.remoteId.str;
+  }
+
   /// Filters scan results to include only BLE/IoT devices.
   ///
   /// Identifies BLE devices by name patterns including:
