@@ -57,6 +57,7 @@ class MotiveBleService {
   Future<void> initialize({
     required final BluetoothDevice device,
     required final List<int> manufacturerData,
+    void Function(Object e, StackTrace s)? errorCallback,
   }) async {
     try {
       final List<BluetoothService> services = await device.discoverServices();
@@ -101,13 +102,16 @@ class MotiveBleService {
       // Start listening to status and product info streams
       await startStatusStream();
       await startProductInfoStream();
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error initializing Motive BLE service: $e');
     }
   }
 
   /// Start listening to device status updates
-  Future<void> startStatusStream() async {
+  Future<void> startStatusStream({
+    void Function(Object e, StackTrace s)? errorCallback,
+  }) async {
     if (_controllerStatusCharacteristic == null) return;
 
     try {
@@ -127,27 +131,34 @@ class MotiveBleService {
             },
             onError: (final dynamic error) {
               debugPrint('Status stream error: $error');
+              errorCallback?.call(error, StackTrace.current);
             },
           );
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error starting status stream: $e');
     }
   }
 
   /// Stop listening to device status updates
-  Future<void> stopStatusStream() async {
+  Future<void> stopStatusStream({
+    void Function(Object e, StackTrace s)? errorCallback,
+  }) async {
     await _statusSubscription?.cancel();
     _statusSubscription = null;
 
     try {
       await _controllerStatusCharacteristic?.setNotifyValue(false);
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error stopping status notifications: $e');
     }
   }
 
   /// Start listening to product info updates
-  Future<void> startProductInfoStream() async {
+  Future<void> startProductInfoStream({
+    void Function(Object e, StackTrace s)? errorCallback,
+  }) async {
     if (_controllerProductInfoCharacteristic == null) return;
 
     try {
@@ -168,32 +179,40 @@ class MotiveBleService {
             },
             onError: (final dynamic error) {
               debugPrint('Product info stream error: $error');
+              errorCallback?.call(error, StackTrace.current);
             },
           );
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error starting product info stream: $e');
     }
   }
 
   /// Stop listening to product info updates
-  Future<void> stopProductInfoStream() async {
+  Future<void> stopProductInfoStream({
+    void Function(Object e, StackTrace s)? errorCallback,
+  }) async {
     await _productInfoSubscription?.cancel();
     _productInfoSubscription = null;
 
     try {
       await _controllerProductInfoCharacteristic?.setNotifyValue(false);
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error stopping product info notifications: $e');
     }
   }
 
   /// Read product info once (for initial read)
-  Future<List<int>?> readProductInfo() async {
+  Future<List<int>?> readProductInfo({
+    void Function(Object e, StackTrace s)? errorCallback,
+  }) async {
     if (_controllerProductInfoCharacteristic == null) return null;
 
     try {
       return await _controllerProductInfoCharacteristic!.read();
-    } catch (e) {
+    } catch (e, s) {
+      errorCallback?.call(e, s);
       debugPrint('Error reading product info: $e');
       return null;
     }
