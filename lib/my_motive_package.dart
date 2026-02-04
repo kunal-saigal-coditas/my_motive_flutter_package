@@ -47,5 +47,4 @@ export 'core/enum/ble_enums.dart';
 export 'core/enum/command_enum.dart';
 
 // Mapper
-export 'mappers/ble_data_mapper.dart';
 export 'mappers/device_status_mapper.dart';

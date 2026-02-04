@@ -1,9 +1,34 @@
-/// Mapper for parsing raw BLE product info data.
-/// Centralizes byte parsing logic that was previously in the presentation layer.
+/// Mapper for parsing product information from raw BLE data.
+///
+/// This mapper extracts firmware version and other product details
+/// from the product info characteristic data.
+///
+/// ## Data Format
+///
+/// Product info is stored starting at byte 9:
+/// - Byte 9: Major version
+/// - Byte 10: Minor version
+/// - Byte 11: Release number
+/// - Byte 12: Build number
+///
+/// ## Example
+///
+/// ```dart
+/// final data = await bleService.readProductInfo();
+/// if (data != null) {
+///   final info = ProductInfoMapper.parse(data);
+///   print('Firmware: ${info.firmwareVersion}'); // e.g., "01.02.03.04"
+/// }
+/// ```
 class ProductInfoMapper {
-  /// Parse firmware version from raw BLE data
-  /// Format: major.minor.release.build (each as 2-digit padded)
-  static ProductInfoData parse(final List<int> data) {
+  /// Parses firmware version from raw BLE product info data.
+  ///
+  /// Extracts version components from bytes 9-12 and formats them
+  /// as a version string: "major.minor.release.build" with zero-padding.
+  ///
+  /// Returns a default [ProductInfoData] with "Unknown" firmware version
+  /// if the data is insufficient (< 13 bytes).
+  static ProductInfoData parseProductInfo(final List<int> data) {
     if (data.length < 13) {
       return const ProductInfoData(
         major: 0,
@@ -35,14 +60,26 @@ class ProductInfoMapper {
   }
 }
 
-/// Structured representation of parsed product info
+/// Structured representation of parsed product information.
+///
+/// Contains the firmware version components and a formatted version string.
 class ProductInfoData {
+  /// Major version number (significant changes).
   final int major;
+
+  /// Minor version number (feature additions).
   final int minor;
+
+  /// Release number (bug fixes).
   final int release;
+
+  /// Build number (internal tracking).
   final int build;
+
+  /// Formatted firmware version string (e.g., "01.02.03.04").
   final String firmwareVersion;
 
+  /// Creates a new [ProductInfoData] with the specified version components.
   const ProductInfoData({
     required this.major,
     required this.minor,

@@ -3,8 +3,53 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+/// Service for managing Bluetooth and Location permissions required for BLE operations.
+///
+/// This service provides a unified API for requesting and checking permissions
+/// across both Android and iOS platforms, handling the differences in permission
+/// models between platform versions.
+///
+/// ## Android Permission Model
+///
+/// - **Android 12+ (API 31+)**: Requires `bluetoothScan`, `bluetoothConnect`, and `location`
+/// - **Android 11 and below**: Requires `bluetooth` and `location`
+///
+/// ## iOS Permission Model
+///
+/// - Requires `bluetooth` and optionally `location` permissions
+///
+/// ## Usage
+///
+/// ```dart
+/// // Request all required permissions
+/// final permissions = await PermissionService.requestPermissions();
+///
+/// // Check if ready for BLE operations
+/// if (await PermissionService.areRequiredPermissionsGranted()) {
+///   // Start scanning for devices
+/// }
+///
+/// // Debug permission issues
+/// final details = await PermissionService.getPermissionStatusDetails();
+/// print(details);
+/// ```
+///
+/// See also:
+/// - [BluetoothScanUtils] for scanning with automatic permission checks
 class PermissionService {
-  /// Request all necessary permissions based on platform
+  /// Requests all necessary permissions based on the current platform.
+  ///
+  /// This method automatically detects the platform and Android version
+  /// to request the appropriate permissions.
+  ///
+  /// Returns a [Map] with permission names as keys and their statuses as values.
+  /// Possible keys include:
+  /// - `bluetoothScan` (Android 12+)
+  /// - `bluetoothConnect` (Android 12+)
+  /// - `bluetooth` (iOS and legacy Android)
+  /// - `location`
+  ///
+  /// Returns an empty map if an error occurs during the request.
   static Future<Map<String, PermissionStatus>> requestPermissions() async {
     try {
       debugPrint('Requesting permissions...');
@@ -74,7 +119,13 @@ class PermissionService {
     }
   }
 
-  /// Check if Bluetooth permission is granted
+  /// Checks if the Bluetooth permission is currently granted.
+  ///
+  /// On Android 12+, this checks the basic bluetooth permission.
+  /// For scan/connect operations, use [requestPermissions] which handles
+  /// the more specific permissions.
+  ///
+  /// Returns `true` if granted, `false` otherwise or on error.
   static Future<bool> isBluetoothPermissionGranted() async {
     try {
       final PermissionStatus status = await Permission.bluetooth.status;
@@ -87,7 +138,12 @@ class PermissionService {
     }
   }
 
-  /// Check if Location permission is granted
+  /// Checks if the Location permission is currently granted.
+  ///
+  /// Location permission is required on Android for BLE scanning to discover
+  /// nearby devices. On iOS, it's optional but may be needed for some features.
+  ///
+  /// Returns `true` if granted, `false` otherwise or on error.
   static Future<bool> isLocationPermissionGranted() async {
     try {
       final PermissionStatus status = await Permission.location.status;
@@ -100,7 +156,21 @@ class PermissionService {
     }
   }
 
-  /// Check if both Bluetooth and Location permissions are granted
+  /// Checks if all required permissions for BLE operations are granted.
+  ///
+  /// This is a convenience method that checks both Bluetooth and Location
+  /// permissions. Use this before attempting to scan for or connect to devices.
+  ///
+  /// Returns `true` only if all required permissions are granted.
+  ///
+  /// Example:
+  /// ```dart
+  /// if (await PermissionService.areRequiredPermissionsGranted()) {
+  ///   await startBluetoothScan();
+  /// } else {
+  ///   await PermissionService.requestPermissions();
+  /// }
+  /// ```
   static Future<bool> areRequiredPermissionsGranted() async {
     try {
       final bool bluetoothGranted = await isBluetoothPermissionGranted();
@@ -114,7 +184,12 @@ class PermissionService {
     }
   }
 
-  /// Request Bluetooth permission
+  /// Requests only the Bluetooth permission.
+  ///
+  /// For full BLE functionality on Android 12+, use [requestPermissions]
+  /// instead, which also requests scan and connect permissions.
+  ///
+  /// Returns `true` if the permission is granted after the request.
   static Future<bool> requestBluetoothPermission() async {
     try {
       final PermissionStatus status = await Permission.bluetooth.request();
@@ -127,7 +202,11 @@ class PermissionService {
     }
   }
 
-  /// Request Location permission
+  /// Requests only the Location permission.
+  ///
+  /// Location permission is required on Android for BLE device discovery.
+  ///
+  /// Returns `true` if the permission is granted after the request.
   static Future<bool> requestLocationPermission() async {
     try {
       final PermissionStatus status = await Permission.location.request();
@@ -140,7 +219,21 @@ class PermissionService {
     }
   }
 
-  /// Request both Bluetooth and Location permissions
+  /// Requests both Bluetooth and Location permissions simultaneously.
+  ///
+  /// This is an alternative to [requestPermissions] that returns a simpler
+  /// boolean result for each permission type.
+  ///
+  /// Returns a [Map] with keys `bluetooth` and `location`, where values
+  /// are `true` if the permission was granted, `false` otherwise.
+  ///
+  /// Example:
+  /// ```dart
+  /// final results = await PermissionService.requestRequiredPermissions();
+  /// if (results['bluetooth'] == true && results['location'] == true) {
+  ///   // Ready for BLE operations
+  /// }
+  /// ```
   static Future<Map<String, bool>> requestRequiredPermissions() async {
     try {
       final Map<Permission, PermissionStatus> statuses =
@@ -160,7 +253,12 @@ class PermissionService {
     }
   }
 
-  /// Check if Bluetooth is enabled on the device
+  /// Checks if Bluetooth hardware is enabled on the device.
+  ///
+  /// Note: On iOS, this always returns `true` as iOS handles Bluetooth
+  /// state internally and doesn't expose this to apps.
+  ///
+  /// Returns `true` if Bluetooth is enabled, `false` otherwise.
   static Future<bool> isBluetoothEnabled() async {
     try {
       // For Android, we can check if Bluetooth is enabled
@@ -177,7 +275,12 @@ class PermissionService {
     }
   }
 
-  /// Check if Location services are enabled on the device
+  /// Checks if Location services are enabled on the device.
+  ///
+  /// Location services must be enabled (not just permission granted)
+  /// for BLE scanning to work on Android.
+  ///
+  /// Returns `true` if location services are enabled, `false` otherwise.
   static Future<bool> isLocationEnabled() async {
     try {
       return await Permission.location.serviceStatus.isEnabled;
@@ -188,7 +291,10 @@ class PermissionService {
     }
   }
 
-  /// Get Android version for permission handling
+  /// Gets the Android SDK version for permission handling.
+  ///
+  /// Returns the Android API level, or 31 (Android 12) as default if
+  /// the version cannot be determined.
   static Future<int> _getAndroidVersion() async {
     try {
       // This would need platform-specific implementation
@@ -201,7 +307,13 @@ class PermissionService {
     }
   }
 
-  /// Check if both Bluetooth and Location services are enabled
+  /// Checks if all required hardware services are enabled.
+  ///
+  /// This verifies both Bluetooth and Location services are enabled
+  /// on the device. Even with permissions granted, BLE operations will
+  /// fail if these services are disabled.
+  ///
+  /// Returns `true` only if all required services are enabled.
   static Future<bool> areRequiredServicesEnabled() async {
     try {
       final bool bluetoothEnabled = await isBluetoothEnabled();
@@ -215,7 +327,23 @@ class PermissionService {
     }
   }
 
-  /// Get permission status details for debugging
+  /// Gets detailed permission and service status information for debugging.
+  ///
+  /// Returns a [Map] containing the status of all relevant permissions
+  /// and services:
+  /// - `bluetooth_permission`: Permission status for Bluetooth
+  /// - `location_permission`: Permission status for Location
+  /// - `bluetooth_service`: Service status for Bluetooth hardware
+  /// - `location_service`: Service status for Location services
+  ///
+  /// If an error occurs, returns a map with an `error` key containing
+  /// the error message.
+  ///
+  /// Example:
+  /// ```dart
+  /// final details = await PermissionService.getPermissionStatusDetails();
+  /// debugPrint('Permission status: $details');
+  /// ```
   static Future<Map<String, String>> getPermissionStatusDetails() async {
     try {
       final Map<String, String> details = <String, String>{};

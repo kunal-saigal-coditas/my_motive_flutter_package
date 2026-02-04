@@ -7,12 +7,61 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_motive_package/services/permission_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+/// Utility class for managing Bluetooth Low Energy scanning operations.
+///
+/// This class handles the complete scan lifecycle including:
+/// - Permission verification and requests
+/// - Bluetooth adapter state management
+/// - Error handling with user-friendly messages
+/// - Scan timeout management
+///
+/// ## Prerequisites
+///
+/// Before scanning can begin, the following must be true:
+/// - Device supports BLE
+/// - Bluetooth is enabled
+/// - Required permissions are granted (Bluetooth + Location on Android)
+///
+/// ## Example
+///
+/// ```dart
+/// await BluetoothScanUtils.startScan(
+///   context: context,
+///   onScanStarted: () => setState(() => isScanning = true),
+///   onScanCompleted: () => setState(() => isScanning = false),
+///   onScanError: () => showError('Scan failed'),
+/// );
+///
+/// // Stop scanning manually if needed
+/// await BluetoothScanUtils.stopScan();
+/// ```
+///
+/// See also:
+/// - [PermissionService] for permission management
+/// - [DeviceHelpers] for filtering scan results
 class BluetoothScanUtils {
+  /// Default scan timeout in seconds.
   static const int _scanTimeoutSeconds = 30;
+
+  /// Delay after attempting to turn on Bluetooth adapter.
   static const int _adapterTurnOnDelaySeconds = 2;
+
+  /// Flag to prevent multiple error snackbars from showing simultaneously.
   static bool _isShowingSnackbar = false;
 
-  /// Start Bluetooth scanning with proper error handling
+  /// Starts a BLE scan with full error handling and precondition checks.
+  ///
+  /// This method performs the following:
+  /// 1. Verifies BLE support on the device
+  /// 2. Checks and requests required permissions
+  /// 3. Ensures Bluetooth adapter is enabled
+  /// 4. Starts the scan with a 30-second timeout
+  ///
+  /// Parameters:
+  /// - [context]: BuildContext for showing error snackbars
+  /// - [onScanStarted]: Called when scan successfully begins
+  /// - [onScanCompleted]: Called when scan finishes or times out
+  /// - [onScanError]: Called if scan cannot be started
   static Future<void> startScan({
     required final BuildContext context,
     required final VoidCallback onScanStarted,
@@ -60,7 +109,9 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Stop Bluetooth scanning
+  /// Stops an active Bluetooth scan.
+  ///
+  /// Safe to call even if no scan is in progress.
   static Future<void> stopScan() async {
     try {
       await FlutterBluePlus.stopScan();
@@ -71,7 +122,15 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Ensure all scan preconditions are met
+  /// Ensures all preconditions for scanning are met.
+  ///
+  /// Checks:
+  /// 1. BLE hardware support
+  /// 2. Bluetooth adapter availability
+  /// 3. Required permissions (platform-specific)
+  /// 4. Bluetooth adapter is turned on
+  ///
+  /// Returns `true` if all preconditions pass, `false` otherwise.
   static Future<bool> _ensureScanPreconditions(
     final BuildContext context,
   ) async {
@@ -138,7 +197,14 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Check and request necessary permissions
+  /// Checks that all required permissions are granted.
+  ///
+  /// Platform-specific requirements:
+  /// - Android 12+: bluetoothScan, bluetoothConnect, location
+  /// - Android 11-: bluetooth, location
+  /// - iOS: bluetooth
+  ///
+  /// Returns `true` if all permissions are granted.
   static Future<bool> _checkPermissions(final BuildContext context) async {
     if (Platform.isAndroid) {
       final int androidVersion = await _getAndroidVersion();
@@ -214,7 +280,12 @@ class BluetoothScanUtils {
     return true;
   }
 
-  /// Ensure Bluetooth adapter is turned on
+  /// Ensures the Bluetooth adapter is turned on.
+  ///
+  /// On Android, attempts to programmatically turn on Bluetooth if off.
+  /// On iOS, prompts the user to enable Bluetooth in settings.
+  ///
+  /// Returns `true` if adapter is on after the check.
   static Future<bool> _ensureAdapterOn(final BuildContext context) async {
     final BluetoothAdapterState current =
         await FlutterBluePlus.adapterState.first;
@@ -264,7 +335,10 @@ class BluetoothScanUtils {
     return true;
   }
 
-  /// Get Android version for permission handling
+  /// Gets the Android SDK version for permission handling.
+  ///
+  /// Uses a method channel to query the actual SDK version.
+  /// Returns 31 (Android 12) as default if detection fails.
   static Future<int> _getAndroidVersion() async {
     try {
       if (Platform.isAndroid) {
@@ -283,7 +357,10 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Show permission error with specific details
+  /// Shows a detailed error message for missing permissions.
+  ///
+  /// Lists each missing permission and provides a button to
+  /// request them via [PermissionService].
   static void _showPermissionError(
     final BuildContext context,
     final PermissionStatus scanStatus,
@@ -306,7 +383,10 @@ class BluetoothScanUtils {
     );
   }
 
-  /// Show error snackbar with optional action
+  /// Shows an error snackbar with an optional action button.
+  ///
+  /// Prevents multiple snackbars from displaying simultaneously
+  /// using the [_isShowingSnackbar] flag.
   static void _showErrorSnackBar(
     final BuildContext context,
     final String message, {
@@ -330,7 +410,10 @@ class BluetoothScanUtils {
         });
   }
 
-  /// Show scan error with specific error handling
+  /// Shows a context-aware error message for scan failures.
+  ///
+  /// Parses the error to provide specific, actionable messages
+  /// for common issues like permissions, Bluetooth state, etc.
   static void _showScanError(final BuildContext context, final dynamic error) {
     String errorMessage = 'Failed to start scan: $error';
 

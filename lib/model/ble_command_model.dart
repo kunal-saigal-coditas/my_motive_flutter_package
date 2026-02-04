@@ -1,16 +1,80 @@
+/// BLE command models for Motive therapy device communication.
+///
+/// This library defines the data models for all BLE commands that can be
+/// sent to Motive therapy devices. Each command type is represented by a
+/// concrete class extending [BleCommand].
+///
+/// ## Available Commands
+///
+/// - [StartTreatmentCommand] - Begin a therapy session
+/// - [ChangeLevelCommand] - Adjust stimulation intensity
+/// - [PauseTreatmentCommand] - Temporarily pause therapy
+/// - [ResumeTreatmentCommand] - Resume paused therapy
+/// - [StopCommand] - Stop the current therapy session
+/// - [PowerOffCommand] - Power off the device
+/// - [ClearEventCommand] - Clear device events/errors
+/// - [OverTheAirUpdateCommand] - Initiate firmware update
+/// - [CustomCommand] - Send custom commands
+///
+/// ## Serialization
+///
+/// All commands support JSON serialization via `toJson()` and `fromJson()`
+/// methods for storage or transmission.
+///
+/// See also:
+/// - [TherapyCommandMapper] for creating raw BLE byte commands
+/// - [CommandType] for command type enumeration
+/// - [CommandPriority] for priority levels
 library;
 
 import 'package:my_motive_package/core/enum/command_enum.dart';
 
-/// Base class
+/// Abstract base class for all BLE commands.
+///
+/// This class provides the common structure for all therapy device commands,
+/// including raw byte data, command type, timing, and priority information.
+///
+/// Subclasses must implement [toJson] for serialization. The static [fromJson]
+/// method handles deserialization by detecting the command type.
+///
+/// ## Properties
+///
+/// - [rawBytes]: The actual bytes to be sent over BLE
+/// - [type]: The command type classification
+/// - [timestamp]: When the command was created/executed
+/// - [requiresAcknowledgment]: Whether the device should acknowledge receipt
+/// - [priority]: Command priority for queue ordering
+/// - [metadata]: Additional contextual data
 abstract class BleCommand {
+  /// Raw bytes representing the BLE command.
+  ///
+  /// These bytes are written directly to the command characteristic.
   List<int>? rawBytes;
+
+  /// The type classification of this command.
   CommandType? type;
+
+  /// Timestamp when this command was created or executed.
   DateTime? timestamp;
+
+  /// Whether this command requires an acknowledgment from the device.
+  ///
+  /// If `true`, the sender should wait for a response before considering
+  /// the command complete. Defaults to `false`.
   bool requiresAcknowledgment;
+
+  /// Priority level for command queue ordering.
+  ///
+  /// Higher priority commands are processed before lower priority ones.
+  /// Defaults to [CommandPriority.normal].
   CommandPriority priority;
+
+  /// Optional metadata for additional context.
+  ///
+  /// Can include session ID, user ID, device ID, or other tracking info.
   Map<String, dynamic>? metadata;
 
+  /// Creates a new [BleCommand] with the specified properties.
   BleCommand({
     this.rawBytes,
     this.type,
@@ -19,47 +83,30 @@ abstract class BleCommand {
     this.priority = CommandPriority.normal,
     this.metadata,
   });
-
-  Map<String, dynamic> toJson();
-  static BleCommand fromJson(final Map<String, dynamic> json) {
-    switch (json['runtimeType']) {
-      case 'startTreatment':
-        return StartTreatmentCommand.fromJson(json);
-
-      case 'changeLevel':
-        return ChangeLevelCommand.fromJson(json);
-
-      case 'pauseTreatment':
-        return PauseTreatmentCommand.fromJson(json);
-
-      case 'resumeTreatment':
-        return ResumeTreatmentCommand.fromJson(json);
-
-      case 'stop':
-        return StopCommand.fromJson(json);
-
-      case 'powerOff':
-        return PowerOffCommand.fromJson(json);
-
-      case 'clearEvent':
-        return ClearEventCommand.fromJson(json);
-
-      case 'overTheAirUpdate':
-        return OverTheAirUpdateCommand.fromJson(json);
-
-      case 'custom':
-        return CustomCommand.fromJson(json);
-
-      default:
-        throw Exception("Unknown BleCommand type: ${json['runtimeType']}");
-    }
-  }
 }
 
-/// Start Treatment Command
+/// Command to start a therapy treatment session.
+///
+/// This command initiates a new therapy session on the device with the
+/// specified duration and optional protocol/therapy identifiers.
+///
+/// ## Example
+///
+/// ```dart
+/// final command = StartTreatmentCommand(
+///   duration: 1800, // 30 minutes in seconds
+///   protocolId: 1,
+///   therapyId: 'session-123',
+/// );
+/// ```
 class StartTreatmentCommand extends BleCommand {
+  /// Duration of the therapy session in seconds.
   int? duration;
+
+  /// Protocol identifier for the therapy type.
   int? protocolId;
+
+  /// Unique identifier for this therapy session.
   String? therapyId;
 
   StartTreatmentCommand({
@@ -73,45 +120,37 @@ class StartTreatmentCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "startTreatment",
-    "duration": duration,
-    "protocolId": protocolId,
-    "therapyId": therapyId,
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory StartTreatmentCommand.fromJson(final Map<String, dynamic> json) =>
-      StartTreatmentCommand(
-        duration: json["duration"],
-        protocolId: json["protocolId"],
-        therapyId: json["therapyId"],
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Change Level Command
+/// Command to change stimulation intensity levels.
+///
+/// This command adjusts the stimulation level for a specific channel
+/// or all channels. The adjustment can be positive (increase) or
+/// negative (decrease).
+///
+/// ## Channels
+///
+/// - Channel 0: Knee stimulation
+/// - Channel 1: Thigh stimulation
+///
+/// ## Example
+///
+/// ```dart
+/// // Increase knee stimulation by 5
+/// final command = ChangeLevelCommand(
+///   channel: 0,
+///   adjustment: 5,
+///   currentLevels: [10, 15], // Current knee and thigh levels
+/// );
+/// ```
 class ChangeLevelCommand extends BleCommand {
+  /// Target channel index (0 = knee, 1 = thigh).
   int? channel;
+
+  /// Amount to adjust the level (positive to increase, negative to decrease).
   int? adjustment;
+
+  /// Current stimulation levels before adjustment [knee, thigh].
   List<int>? currentLevels;
 
   ChangeLevelCommand({
@@ -125,42 +164,20 @@ class ChangeLevelCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "changeLevel",
-    "channel": channel,
-    "adjustment": adjustment,
-    "currentLevels": currentLevels,
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory ChangeLevelCommand.fromJson(final Map<String, dynamic> json) =>
-      ChangeLevelCommand(
-        channel: json["channel"],
-        adjustment: json["adjustment"],
-        currentLevels: (json["currentLevels"] as List<dynamic>?)?.cast<int>(),
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Pause Treatment Command
+/// Command to pause an active therapy session.
+///
+/// Pausing preserves the current session state including elapsed time
+/// and stimulation levels. Use [ResumeTreatmentCommand] to continue.
+///
+/// ## Example
+///
+/// ```dart
+/// final command = PauseTreatmentCommand(
+///   timestamp: DateTime.now(),
+/// );
+/// ```
 class PauseTreatmentCommand extends BleCommand {
   PauseTreatmentCommand({
     super.rawBytes,
@@ -170,36 +187,12 @@ class PauseTreatmentCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "pauseTreatment",
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory PauseTreatmentCommand.fromJson(final Map<String, dynamic> json) =>
-      PauseTreatmentCommand(
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Resume Treatment Command
+/// Command to resume a paused therapy session.
+///
+/// Resumes therapy from where it was paused, restoring previous
+/// stimulation levels and continuing the session timer.
 class ResumeTreatmentCommand extends BleCommand {
   ResumeTreatmentCommand({
     super.rawBytes,
@@ -209,36 +202,14 @@ class ResumeTreatmentCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "resumeTreatment",
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory ResumeTreatmentCommand.fromJson(final Map<String, dynamic> json) =>
-      ResumeTreatmentCommand(
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Stop Command
+/// Command to stop the current therapy session.
+///
+/// This command immediately stops all stimulation and ends the session.
+/// Unlike pause, a stopped session cannot be resumed.
+///
+/// Defaults to [CommandPriority.high] to ensure immediate processing.
 class StopCommand extends BleCommand {
   StopCommand({
     super.rawBytes,
@@ -248,35 +219,14 @@ class StopCommand extends BleCommand {
     super.priority = CommandPriority.high,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "stop",
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory StopCommand.fromJson(final Map<String, dynamic> json) => StopCommand(
-    rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-    type: json["type"] != null
-        ? CommandType.values.firstWhere(
-            (final CommandType e) => e.toString() == json["type"],
-          )
-        : null,
-    timestamp: json["timestamp"] != null
-        ? DateTime.parse(json["timestamp"])
-        : null,
-    requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-    priority: _priorityFromString(json["priority"]),
-    metadata: json["metadata"] as Map<String, dynamic>?,
-  );
 }
 
-/// Power Off Command
+/// Command to power off the therapy device.
+///
+/// This command shuts down the device completely. The device will need
+/// to be manually powered on again before use.
+///
+/// Defaults to [CommandPriority.high] to ensure immediate processing.
 class PowerOffCommand extends BleCommand {
   PowerOffCommand({
     super.rawBytes,
@@ -286,36 +236,12 @@ class PowerOffCommand extends BleCommand {
     super.priority = CommandPriority.high,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "powerOff",
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory PowerOffCommand.fromJson(final Map<String, dynamic> json) =>
-      PowerOffCommand(
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Clear Event Command
+/// Command to clear device events or error states.
+///
+/// Use this command to acknowledge and clear error conditions or
+/// pending events on the device.
 class ClearEventCommand extends BleCommand {
   ClearEventCommand({
     super.rawBytes,
@@ -325,37 +251,17 @@ class ClearEventCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "clearEvent",
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory ClearEventCommand.fromJson(final Map<String, dynamic> json) =>
-      ClearEventCommand(
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// OTA Update Command
+/// Command to initiate an over-the-air firmware update.
+///
+/// This command puts the device into OTA mode and prepares it to
+/// receive a firmware update. The actual firmware transfer is handled
+/// separately.
+///
+/// Defaults to [CommandPriority.low] as updates are not time-critical.
 class OverTheAirUpdateCommand extends BleCommand {
+  /// Target firmware version for the update.
   String? firmwareVersion;
 
   OverTheAirUpdateCommand({
@@ -367,39 +273,14 @@ class OverTheAirUpdateCommand extends BleCommand {
     super.priority = CommandPriority.low,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "overTheAirUpdate",
-    "firmwareVersion": firmwareVersion,
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory OverTheAirUpdateCommand.fromJson(final Map<String, dynamic> json) =>
-      OverTheAirUpdateCommand(
-        firmwareVersion: json["firmwareVersion"],
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Custom Command
+/// Command for sending custom/experimental commands.
+///
+/// Use this for commands not covered by the standard command types.
+/// The [rawBytes] property must be set with the actual command data.
 class CustomCommand extends BleCommand {
+  /// Human-readable name for this custom command.
   String? commandName;
 
   CustomCommand({
@@ -411,48 +292,49 @@ class CustomCommand extends BleCommand {
     super.priority = CommandPriority.normal,
     super.metadata,
   });
-
-  @override
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "runtimeType": "custom",
-    "commandName": commandName,
-    "rawBytes": rawBytes,
-    "type": type?.toString(),
-    "timestamp": timestamp?.toIso8601String(),
-    "requiresAcknowledgment": requiresAcknowledgment,
-    "priority": priority.toString(),
-    "metadata": metadata,
-  };
-
-  factory CustomCommand.fromJson(final Map<String, dynamic> json) =>
-      CustomCommand(
-        commandName: json["commandName"],
-        rawBytes: (json["rawBytes"] as List<dynamic>?)?.cast<int>(),
-        type: json["type"] != null
-            ? CommandType.values.firstWhere(
-                (final CommandType e) => e.toString() == json["type"],
-              )
-            : null,
-        timestamp: json["timestamp"] != null
-            ? DateTime.parse(json["timestamp"])
-            : null,
-        requiresAcknowledgment: json["requiresAcknowledgment"] ?? false,
-        priority: _priorityFromString(json["priority"]),
-        metadata: json["metadata"] as Map<String, dynamic>?,
-      );
 }
 
-/// Metadata
+/// Metadata attached to BLE commands for tracking and retry logic.
+///
+/// This class provides contextual information about a command including
+/// session tracking, retry configuration, and optional parameters.
+///
+/// ## Example
+///
+/// ```dart
+/// final metadata = CommandMetadata(
+///   sessionId: 'therapy-session-123',
+///   userId: 'user-456',
+///   deviceId: 'device-789',
+///   maxRetries: 5,
+/// );
+/// ```
 class CommandMetadata {
+  /// Unique identifier for the therapy session.
   String? sessionId;
+
+  /// Unique identifier for the user.
   String? userId;
+
+  /// Unique identifier for the connected device.
   String? deviceId;
+
+  /// Additional command-specific parameters.
   Map<String, dynamic>? parameters;
+
+  /// Human-readable description of the command purpose.
   String? description;
+
+  /// When this command should be considered expired.
   DateTime? expiresAt;
+
+  /// Current retry attempt number (starts at 1).
   int retryCount;
+
+  /// Maximum number of retry attempts allowed.
   int maxRetries;
 
+  /// Creates a new [CommandMetadata] instance.
   CommandMetadata({
     this.sessionId,
     this.userId,
@@ -463,40 +345,4 @@ class CommandMetadata {
     this.retryCount = 1,
     this.maxRetries = 3,
   });
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    "sessionId": sessionId,
-    "userId": userId,
-    "deviceId": deviceId,
-    "parameters": parameters,
-    "description": description,
-    "expiresAt": expiresAt?.toIso8601String(),
-    "retryCount": retryCount,
-    "maxRetries": maxRetries,
-  };
-
-  factory CommandMetadata.fromJson(final Map<String, dynamic> json) =>
-      CommandMetadata(
-        sessionId: json["sessionId"],
-        userId: json["userId"],
-        deviceId: json["deviceId"],
-        parameters: json["parameters"] as Map<String, dynamic>?,
-        description: json["description"],
-        expiresAt: json["expiresAt"] != null
-            ? DateTime.parse(json["expiresAt"])
-            : null,
-        retryCount: json["retryCount"] ?? 1,
-        maxRetries: json["maxRetries"] ?? 3,
-      );
-}
-
-/// Helper: Convert string to enum
-CommandPriority _priorityFromString(final String? value) {
-  if (value == null) return CommandPriority.normal;
-
-  return CommandPriority.values.firstWhere(
-    (final CommandPriority e) => e.toString() == value,
-
-    orElse: () => CommandPriority.normal,
-  );
 }

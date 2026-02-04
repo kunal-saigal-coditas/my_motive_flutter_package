@@ -1,7 +1,25 @@
-/// Domain enum representing BLE adapter state.
-/// Abstracts flutter_blue_plus BluetoothAdapterState.
+/// Domain enums for BLE state management.
+///
+/// These enums abstract the flutter_blue_plus types to provide
+/// a cleaner domain model with additional utility methods.
+///
+/// ## Available Enums
+///
+/// - [BleAdapterState]: Bluetooth adapter on/off/availability state
+/// - [BleConnectionState]: Device connection lifecycle state
+/// - [BleDeviceStatus]: Device operating status from status byte
 library;
 
+/// Represents the Bluetooth adapter state.
+///
+/// Abstracts [BluetoothAdapterState] from flutter_blue_plus for
+/// domain layer independence.
+///
+/// ## Utility Getters
+///
+/// - [isOn]: True when adapter is on and ready
+/// - [isOff]: True when adapter is turned off
+/// - [isAvailable]: True when BLE operations can proceed
 enum BleAdapterState {
   unknown('Unknown'),
   unavailable('Unavailable'),
@@ -19,8 +37,14 @@ enum BleAdapterState {
   bool get isAvailable => this == BleAdapterState.on;
 }
 
-/// Domain enum representing BLE connection state.
-/// Abstracts flutter_blue_plus BluetoothConnectionState.
+/// Represents the BLE connection state with a device.
+///
+/// Abstracts [BluetoothConnectionState] from flutter_blue_plus.
+///
+/// ## Utility Getters
+///
+/// - [isConnected]: True when fully connected and ready
+/// - [isDisconnected]: True when not connected
 enum BleConnectionState {
   disconnected('Disconnected'),
   connecting('Connecting'),
@@ -34,7 +58,21 @@ enum BleConnectionState {
   bool get isDisconnected => this == BleConnectionState.disconnected;
 }
 
-/// Domain enum representing BLE device status (from controller status byte).
+/// Operating status of the BLE device from the controller status byte.
+///
+/// These values are parsed from byte 0 of the device status data.
+///
+/// ## Status Byte Mapping
+///
+/// | Byte Value | Status |
+/// |------------|--------|
+/// | 0 | Idle |
+/// | 1 | Stimulating |
+/// | 2 | Battery Low |
+/// | 3 | Fault |
+/// | 4 | Powering Off |
+/// | 5 | Updating Firmware (OAD) |
+/// | 6 | Charging |
 enum BleDeviceStatus {
   idle('Idle'),
   stimulating('Stim'),
@@ -48,7 +86,9 @@ enum BleDeviceStatus {
   const BleDeviceStatus(this.displayName);
   final String displayName;
 
-  /// Create from status byte value
+  /// Creates a [BleDeviceStatus] from the raw status byte value.
+  ///
+  /// Returns [BleDeviceStatus.unknown] for unrecognized byte values.
   static BleDeviceStatus fromByte(final int statusByte) {
     switch (statusByte) {
       case 0:
