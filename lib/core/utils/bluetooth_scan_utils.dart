@@ -22,6 +22,16 @@ import 'package:permission_handler/permission_handler.dart';
 /// - Bluetooth is enabled
 /// - Required permissions are granted (Bluetooth + Location on Android)
 ///
+/// ## Platform-Specific Requirements
+///
+/// ### Android
+/// - **Android 12+ (API 31+)**: Requires `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT`
+/// - **Android 11 and below**: Requires `BLUETOOTH` and `ACCESS_FINE_LOCATION`
+///
+/// ### iOS
+/// - Requires `NSBluetoothAlwaysUsageDescription` in Info.plist
+/// - Bluetooth permission must be granted
+///
 /// ## Example
 ///
 /// ```dart
@@ -32,6 +42,13 @@ import 'package:permission_handler/permission_handler.dart';
 ///   onScanError: () => showError('Scan failed'),
 /// );
 ///
+/// // Listen to scan results
+/// FlutterBluePlus.scanResults.listen((results) {
+///   for (final result in results) {
+///     print('Found device: ${result.device.platformName}');
+///   }
+/// });
+///
 /// // Stop scanning manually if needed
 /// await BluetoothScanUtils.stopScan();
 /// ```
@@ -41,9 +58,13 @@ import 'package:permission_handler/permission_handler.dart';
 /// - [DeviceHelpers] for filtering scan results
 class BluetoothScanUtils {
   /// Default scan timeout in seconds.
+  ///
+  /// Scanning will automatically stop after this duration.
   static const int _scanTimeoutSeconds = 30;
 
-  /// Delay after attempting to turn on Bluetooth adapter.
+  /// Delay in seconds after attempting to turn on the Bluetooth adapter.
+  ///
+  /// This gives the adapter time to fully initialize before checking state.
   static const int _adapterTurnOnDelaySeconds = 2;
 
   /// Flag to prevent multiple error snackbars from showing simultaneously.
@@ -51,17 +72,46 @@ class BluetoothScanUtils {
 
   /// Starts a BLE scan with full error handling and precondition checks.
   ///
-  /// This method performs the following:
-  /// 1. Verifies BLE support on the device
-  /// 2. Checks and requests required permissions
-  /// 3. Ensures Bluetooth adapter is enabled
-  /// 4. Starts the scan with a 30-second timeout
+  /// This method performs the following steps:
+  /// 1. Verifies BLE hardware support on the device
+  /// 2. Checks Bluetooth adapter availability
+  /// 3. Verifies and requests required permissions
+  /// 4. Ensures the Bluetooth adapter is turned on
+  /// 5. Starts the scan with the configured timeout
   ///
-  /// Parameters:
+  /// ## Parameters
+  ///
   /// - [context]: BuildContext for showing error snackbars
-  /// - [onScanStarted]: Called when scan successfully begins
-  /// - [onScanCompleted]: Called when scan finishes or times out
-  /// - [onScanError]: Called if scan cannot be started
+  /// - [onScanStarted]: Callback invoked when scan successfully begins
+  /// - [onScanCompleted]: Callback invoked when scan finishes or times out
+  /// - [onScanError]: Callback invoked if scan cannot be started
+  ///
+  /// ## Error Handling
+  ///
+  /// All errors are caught and displayed via snackbar with actionable
+  /// messages. Common errors include:
+  /// - Missing permissions
+  /// - Bluetooth disabled
+  /// - BLE not supported
+  /// - Scan already in progress
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// await BluetoothScanUtils.startScan(
+  ///   context: context,
+  ///   onScanStarted: () {
+  ///     setState(() => _isScanning = true);
+  ///   },
+  ///   onScanCompleted: () {
+  ///     setState(() => _isScanning = false);
+  ///   },
+  ///   onScanError: () {
+  ///     setState(() => _isScanning = false);
+  ///     showErrorDialog('Failed to start scan');
+  ///   },
+  /// );
+  /// ```
   static Future<void> startScan({
     required final BuildContext context,
     required final VoidCallback onScanStarted,
@@ -83,7 +133,6 @@ class BluetoothScanUtils {
       // Clear previous results and start scan
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: _scanTimeoutSeconds),
-        androidUsesFineLocation: true,
       );
 
       debugPrint('Scan started successfully');
@@ -111,7 +160,19 @@ class BluetoothScanUtils {
 
   /// Stops an active Bluetooth scan.
   ///
-  /// Safe to call even if no scan is in progress.
+  /// This method is safe to call even if no scan is currently in progress.
+  /// Any errors during stop are logged but not thrown.
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// // Stop scan when user navigates away
+  /// @override
+  /// void dispose() {
+  ///   BluetoothScanUtils.stopScan();
+  ///   super.dispose();
+  /// }
+  /// ```
   static Future<void> stopScan() async {
     try {
       await FlutterBluePlus.stopScan();
@@ -124,13 +185,15 @@ class BluetoothScanUtils {
 
   /// Ensures all preconditions for scanning are met.
   ///
-  /// Checks:
-  /// 1. BLE hardware support
-  /// 2. Bluetooth adapter availability
-  /// 3. Required permissions (platform-specific)
-  /// 4. Bluetooth adapter is turned on
+  /// This method performs a series of checks in order:
+  /// 1. **BLE Support**: Verifies the device hardware supports BLE
+  /// 2. **Adapter Availability**: Checks Bluetooth is not restricted
+  /// 3. **Permissions**: Verifies all required permissions are granted
+  /// 4. **Adapter State**: Ensures Bluetooth is turned on
   ///
-  /// Returns `true` if all preconditions pass, `false` otherwise.
+  /// If any check fails, an appropriate error message is shown via snackbar.
+  ///
+  /// Returns `true` if all preconditions pass and scanning can proceed.
   static Future<bool> _ensureScanPreconditions(
     final BuildContext context,
   ) async {
@@ -197,14 +260,22 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Checks that all required permissions are granted.
+  /// Checks that all required Bluetooth permissions are granted.
   ///
-  /// Platform-specific requirements:
-  /// - Android 12+: bluetoothScan, bluetoothConnect, location
-  /// - Android 11-: bluetooth, location
-  /// - iOS: bluetooth
+  /// Platform-specific permission requirements:
   ///
-  /// Returns `true` if all permissions are granted.
+  /// ### Android 12+ (API 31+)
+  /// - `BLUETOOTH_SCAN`: Required for discovering nearby devices
+  /// - `BLUETOOTH_CONNECT`: Required for connecting to devices
+  ///
+  /// ### Android 11 and below
+  /// - `BLUETOOTH`: Basic Bluetooth access
+  /// - `ACCESS_FINE_LOCATION`: Required for BLE scanning
+  ///
+  /// ### iOS
+  /// - `bluetooth`: Core Bluetooth permission
+  ///
+  /// Returns `true` if all required permissions are granted.
   static Future<bool> _checkPermissions(final BuildContext context) async {
     if (Platform.isAndroid) {
       final int androidVersion = await _getAndroidVersion();
@@ -219,23 +290,13 @@ class BluetoothScanUtils {
         final PermissionStatus connectStatus =
             await Permission.bluetoothConnect.status;
 
-        final PermissionStatus locationStatus =
-            await Permission.location.status;
-
         debugPrint(
-          'Permission statuses - Scan: $scanStatus, Connect: $connectStatus, Location: $locationStatus',
+          'Permission statuses - Scan: $scanStatus, Connect: $connectStatus, ',
         );
 
-        if (!scanStatus.isGranted ||
-            !connectStatus.isGranted ||
-            !locationStatus.isGranted) {
+        if (!scanStatus.isGranted || !connectStatus.isGranted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showPermissionError(
-              context,
-              scanStatus,
-              connectStatus,
-              locationStatus,
-            );
+            _showPermissionError(context, scanStatus, connectStatus);
           });
 
           return false;
@@ -280,12 +341,16 @@ class BluetoothScanUtils {
     return true;
   }
 
-  /// Ensures the Bluetooth adapter is turned on.
+  /// Ensures the Bluetooth adapter is turned on and ready.
   ///
-  /// On Android, attempts to programmatically turn on Bluetooth if off.
-  /// On iOS, prompts the user to enable Bluetooth in settings.
+  /// On Android, this method will attempt to programmatically turn on
+  /// Bluetooth if it's currently off. On iOS, the user must manually
+  /// enable Bluetooth in Settings.
   ///
-  /// Returns `true` if adapter is on after the check.
+  /// After attempting to turn on Bluetooth, the method waits for
+  /// [_adapterTurnOnDelaySeconds] to allow the adapter to initialize.
+  ///
+  /// Returns `true` if the adapter is on after the check/attempt.
   static Future<bool> _ensureAdapterOn(final BuildContext context) async {
     final BluetoothAdapterState current =
         await FlutterBluePlus.adapterState.first;
@@ -335,10 +400,13 @@ class BluetoothScanUtils {
     return true;
   }
 
-  /// Gets the Android SDK version for permission handling.
+  /// Gets the Android SDK version for determining permission requirements.
   ///
-  /// Uses a method channel to query the actual SDK version.
-  /// Returns 31 (Android 12) as default if detection fails.
+  /// Uses a MethodChannel to query the actual device SDK version.
+  /// Returns 31 (Android 12) as the default if detection fails, which
+  /// ensures the more restrictive permission model is used.
+  ///
+  /// For non-Android platforms, returns 100 to skip Android-specific checks.
   static Future<int> _getAndroidVersion() async {
     try {
       if (Platform.isAndroid) {
@@ -357,21 +425,24 @@ class BluetoothScanUtils {
     }
   }
 
-  /// Shows a detailed error message for missing permissions.
+  /// Shows a detailed error message for missing Bluetooth permissions.
   ///
-  /// Lists each missing permission and provides a button to
-  /// request them via [PermissionService].
+  /// Lists each missing permission specifically and provides an action
+  /// button to request permissions via [PermissionService].
+  ///
+  /// Parameters:
+  /// - [context]: BuildContext for showing the snackbar
+  /// - [scanStatus]: Current status of BLUETOOTH_SCAN permission
+  /// - [connectStatus]: Current status of BLUETOOTH_CONNECT permission
   static void _showPermissionError(
     final BuildContext context,
     final PermissionStatus scanStatus,
     final PermissionStatus connectStatus,
-    final PermissionStatus locationStatus,
   ) {
     String permissionMessage = 'Required permissions:\n';
 
     if (!scanStatus.isGranted) permissionMessage += '• Bluetooth Scan\n';
     if (!connectStatus.isGranted) permissionMessage += '• Bluetooth Connect\n';
-    if (!locationStatus.isGranted) permissionMessage += '• Location\n';
 
     _showErrorSnackBar(
       context,
@@ -383,10 +454,15 @@ class BluetoothScanUtils {
     );
   }
 
-  /// Shows an error snackbar with an optional action button.
+  /// Shows an error message in a snackbar with an optional action button.
   ///
-  /// Prevents multiple snackbars from displaying simultaneously
-  /// using the [_isShowingSnackbar] flag.
+  /// Implements a debounce mechanism via [_isShowingSnackbar] to prevent
+  /// multiple snackbars from stacking when errors occur rapidly.
+  ///
+  /// Parameters:
+  /// - [context]: BuildContext for showing the snackbar
+  /// - [message]: Error message to display
+  /// - [action]: Optional action button (e.g., "Settings", "Grant")
   static void _showErrorSnackBar(
     final BuildContext context,
     final String message, {
@@ -410,10 +486,24 @@ class BluetoothScanUtils {
         });
   }
 
-  /// Shows a context-aware error message for scan failures.
+  /// Shows a context-aware error message based on the error type.
   ///
-  /// Parses the error to provide specific, actionable messages
-  /// for common issues like permissions, Bluetooth state, etc.
+  /// Parses the error message to provide specific, actionable feedback:
+  ///
+  /// | Error Contains | Message Shown |
+  /// |----------------|---------------|
+  /// | "permission" | Permission request guidance |
+  /// | "bluetooth" | Enable Bluetooth prompt |
+  /// | "location" | Location permission needed |
+  /// | "timeout" | Retry suggestion |
+  /// | "not supported" | BLE not available |
+  /// | "already scanning" | Scan in progress |
+  /// | "unavailable" | Check airplane mode |
+  /// | "turning on/off" | Wait and retry |
+  /// | "denied" | Settings redirect |
+  /// | "restricted" | Check device settings |
+  ///
+  /// All errors include a "Settings" action button to open app settings.
   static void _showScanError(final BuildContext context, final dynamic error) {
     String errorMessage = 'Failed to start scan: $error';
 
