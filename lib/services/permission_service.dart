@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Service for managing Bluetooth and Location permissions required for BLE operations.
@@ -297,13 +298,19 @@ class PermissionService {
   /// the version cannot be determined.
   static Future<int> _getAndroidVersion() async {
     try {
-      // This would need platform-specific implementation
-      // For now, return a default value
-      return 31; // Assume Android 12+ by default
+      if (Platform.isAndroid) {
+        // Use MethodChannel to get the Android SDK version if DeviceInfoPlugin is not available
+        const MethodChannel channel = MethodChannel('bluetooth_scan_utils');
+        final int? sdkInt = await channel.invokeMethod<int>('getAndroidSdkInt');
+
+        return sdkInt ?? 31;
+      } else {
+        // Not Android, so the concept doesn't apply, return a high value
+        return 100;
+      }
     } catch (e) {
       debugPrint('Error getting Android version: $e');
-
-      return 31; // Default to Android 12+
+      return 31; // Default to Android 12+ (API 31)
     }
   }
 
