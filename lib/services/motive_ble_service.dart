@@ -213,6 +213,13 @@ class MotiveBleService {
     void Function(Object e, StackTrace s)? errorCallback,
   }) async {
     try {
+      final BluetoothConnectionState state = await device.connectionState.first;
+
+      if (state != BluetoothConnectionState.connected) {
+        debugPrint('[BLE] Device not connected, skipping service discovery');
+        return;
+      }
+
       final List<BluetoothService> services = await device.discoverServices();
       _authCode = BleCommandUtils.calculateAuthCode(manufacturerData);
 

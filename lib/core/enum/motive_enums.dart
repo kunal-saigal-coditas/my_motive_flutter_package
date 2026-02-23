@@ -150,16 +150,24 @@ enum SheetStatus {
 /// - [code]: Single letter identifier used in QR codes
 /// - [displayName]: Human-readable name for UI
 /// - [firestoreName]: Backend database identifier
-enum TherapyPadType {
-  leftKnee('L', 'Left Knee', 'KNEE-LEFT'),
-  rightKnee('R', 'Right Knee', 'KNEE-RIGHT'),
-  backLower('B', 'Back Lower', 'BACK-LOWER');
+/// - [sideName]: Side name for UI
 
-  const TherapyPadType(this.code, this.displayName, this.firestoreName);
+enum TherapyPadType {
+  leftKnee('L', 'Left Knee', 'KNEE-LEFT', "Left"),
+  rightKnee('R', 'Right Knee', 'KNEE-RIGHT', 'Right'),
+  backLower('B', 'Back Lower', 'BACK-LOWER', 'LowerBack');
+
+  const TherapyPadType(
+    this.code,
+    this.displayName,
+    this.firestoreName,
+    this.sideName,
+  );
 
   final String code;
   final String displayName;
   final String firestoreName;
+  final String sideName;
 
   static TherapyPadType? fromCode(final String code) {
     return TherapyPadType.values.firstWhere(
