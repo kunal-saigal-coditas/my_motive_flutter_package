@@ -41,6 +41,7 @@ export 'services/motive_ble_service.dart';
 // Models
 export 'model/device_status_model.dart';
 export 'model/product_info_model.dart';
+export 'model/therapy_commands.dart';
 
 // Enums
 export 'core/enum/motive_enums.dart';
