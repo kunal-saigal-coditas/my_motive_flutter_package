@@ -39,7 +39,6 @@ library;
 export 'services/motive_ble_service.dart';
 
 // Models
-export 'model/ble_command_model.dart';
 export 'model/device_status_model.dart';
 export 'model/product_info_model.dart';
 
