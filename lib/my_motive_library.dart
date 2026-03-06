@@ -40,11 +40,10 @@ export 'services/motive_ble_service.dart';
 
 // Models
 export 'model/ble_command_model.dart';
+export 'model/device_status_model.dart';
+export 'model/product_info_model.dart';
 
 // Enums
 export 'core/enum/motive_enums.dart';
 export 'core/enum/ble_enums.dart';
 export 'core/enum/command_enum.dart';
-
-// Mapper
-export 'mappers/device_status_mapper.dart';

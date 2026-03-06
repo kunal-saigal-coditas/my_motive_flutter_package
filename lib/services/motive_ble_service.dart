@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:my_motive_package/core/utils/ble_command_utils.dart';
+import 'package:my_motive_package/model/device_status_model.dart';
+import 'package:my_motive_package/model/product_info_model.dart';
 
 /// Service for managing BLE communication with Motive therapy devices.
 ///
@@ -24,10 +26,18 @@ import 'package:my_motive_package/core/utils/ble_command_utils.dart';
 ///   manufacturerData: advertisementData,
 /// );
 ///
-/// // Listen to device status updates
-/// bleService.statusStream.listen((data) {
-///   final batteryLevel = DeviceStatusMapper.parseBatteryLevel(data);
-///   print('Battery: $batteryLevel%');
+/// // Listen to device status updates - already parsed into DeviceStatus model!
+/// bleService.statusStream.listen((status) {
+///   print('Battery: ${status.batteryLevel}%');
+///   print('Charging: ${status.isCharging}');
+///   print('Temperature: ${status.temperature}°C');
+///   print('Knee level: ${status.kneeStimLevel}');
+///   print('Thigh level: ${status.thighStimLevel}');
+///   print('Treatment active: ${status.isTreatmentActive}');
+///   
+///   if (status.isBatteryLow) {
+///     showLowBatteryWarning();
+///   }
 /// });
 ///
 /// // Clean up when done
@@ -87,13 +97,13 @@ class MotiveBleService {
   // Stream Controllers
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Stream controller for broadcasting device status updates.
-  final StreamController<List<int>> _statusStreamController =
-      StreamController<List<int>>.broadcast();
+  /// Stream controller for broadcasting parsed device status updates.
+  final StreamController<DeviceStatus> _statusStreamController =
+      StreamController<DeviceStatus>.broadcast();
 
-  /// Stream controller for broadcasting product info updates.
-  final StreamController<List<int>> _productInfoStreamController =
-      StreamController<List<int>>.broadcast();
+  /// Stream controller for broadcasting parsed product info updates.
+  final StreamController<ProductInfo> _productInfoStreamController =
+      StreamController<ProductInfo>.broadcast();
 
   // Stream subscriptions
   StreamSubscription<List<int>>? _statusSubscription;
@@ -103,43 +113,69 @@ class MotiveBleService {
   // Public Streams
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Stream of raw status data from the device.
+  /// Stream of parsed [DeviceStatus] updates from the device.
   ///
-  /// This stream emits byte arrays containing device status information
-  /// whenever the device sends a notification. Use [DeviceStatusMapper]
-  /// to parse the raw data into meaningful values.
+  /// This stream emits [DeviceStatus] objects containing all device information
+  /// already parsed into readable properties. No manual byte parsing needed!
   ///
-  /// The status data includes:
-  /// - Battery level and charging status
-  /// - Controller temperature
-  /// - Sheet/pad status and skin contact
-  /// - Stimulation levels
-  /// - Treatment active state
+  /// The status includes:
+  /// - `batteryLevel`: Battery percentage (0-100)
+  /// - `isCharging`: Whether device is charging
+  /// - `temperature`: Controller temperature in Celsius
+  /// - `kneeStimLevel`: Knee stimulation level (0-100)
+  /// - `thighStimLevel`: Thigh stimulation level (0-100)
+  /// - `isTreatmentActive`: Whether therapy is running
+  /// - `controllerStatus`: Status string (Idle, Stim, Charging, etc.)
+  /// - `sheetStatus`: Pad docking status
+  /// - `leftSkinContact` / `rightSkinContact`: Skin detection
+  ///
+  /// Convenience getters:
+  /// - `isBatteryLow`: Battery below 20%
+  /// - `isBatteryCritical`: Battery below 10%
+  /// - `hasBothSkinContact`: Both pads have skin contact
+  /// - `isIdle`, `isStimulating`, `isFaulted`: Quick status checks
   ///
   /// Example:
   /// ```dart
-  /// bleService.statusStream.listen((data) {
-  ///   final battery = DeviceStatusMapper.parseBatteryLevel(data);
-  ///   final isCharging = DeviceStatusMapper.parseIsCharging(data);
-  ///   print('Battery: $battery%, Charging: $isCharging');
+  /// bleService.statusStream.listen((status) {
+  ///   print('Battery: ${status.batteryLevel}%');
+  ///   print('Charging: ${status.isCharging}');
+  ///   print('Knee level: ${status.kneeStimLevel}');
+  ///   print('Thigh level: ${status.thighStimLevel}');
+  ///   print('Treatment active: ${status.isTreatmentActive}');
+  ///   
+  ///   if (status.isBatteryLow) {
+  ///     showLowBatteryWarning();
+  ///   }
   /// });
   /// ```
-  Stream<List<int>> get statusStream => _statusStreamController.stream;
+  Stream<DeviceStatus> get statusStream => _statusStreamController.stream;
 
-  /// Stream of raw product info data from the device.
+  /// Stream of parsed [ProductInfo] updates from the device.
   ///
-  /// This stream emits byte arrays containing product information
-  /// whenever the device sends a notification. Use [ProductInfoMapper]
-  /// to parse the raw data into firmware version and other details.
+  /// This stream emits [ProductInfo] objects containing firmware version
+  /// information already parsed into readable properties.
+  ///
+  /// The product info includes:
+  /// - `major`, `minor`, `release`, `build`: Version components
+  /// - `firmwareVersion`: Formatted version string (e.g., "01.02.03.04")
+  /// - `shortVersion`: Short format (e.g., "1.2.3")
+  ///
+  /// Convenience methods:
+  /// - `meetsMinimumVersion(version)`: Check version compatibility
+  /// - `isNewerThan(other)` / `isOlderThan(other)`: Compare versions
   ///
   /// Example:
   /// ```dart
-  /// bleService.productInfoStream.listen((data) {
-  ///   final info = ProductInfoMapper.parse(data);
+  /// bleService.productInfoStream.listen((info) {
   ///   print('Firmware: ${info.firmwareVersion}');
+  ///   
+  ///   if (!info.meetsMinimumVersion('2.0.0')) {
+  ///     showUpdatePrompt();
+  ///   }
   /// });
   /// ```
-  Stream<List<int>> get productInfoStream =>
+  Stream<ProductInfo> get productInfoStream =>
       _productInfoStreamController.stream;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -275,8 +311,7 @@ class MotiveBleService {
   /// Starts listening to device status updates via BLE notifications.
   ///
   /// This method enables notifications on the status characteristic and
-  /// forwards all received data to [statusStream]. Any existing subscription
-  /// is cancelled before creating a new one.
+  /// forwards parsed [DeviceStatus] objects to [statusStream].
   ///
   /// The status characteristic provides real-time updates about:
   /// - Battery level and charging state
@@ -291,8 +326,9 @@ class MotiveBleService {
   /// Example:
   /// ```dart
   /// await bleService.startStatusStream();
-  /// bleService.statusStream.listen((data) {
-  ///   // Process status data
+  /// bleService.statusStream.listen((status) {
+  ///   print('Battery: ${status.batteryLevel}%');
+  ///   print('Treatment active: ${status.isTreatmentActive}');
   /// });
   /// ```
   Future<void> startStatusStream({
@@ -312,7 +348,8 @@ class MotiveBleService {
           .listen(
             (final List<int> data) {
               if (data.isNotEmpty && !_statusStreamController.isClosed) {
-                _statusStreamController.add(data);
+                final status = DeviceStatus.fromRawData(data);
+                _statusStreamController.add(status);
               }
             },
             onError: (final dynamic error) {
@@ -353,14 +390,21 @@ class MotiveBleService {
   /// Starts listening to product info updates via BLE notifications.
   ///
   /// This method enables notifications on the product info characteristic
-  /// and forwards all received data to [productInfoStream]. Any existing
-  /// subscription is cancelled before creating a new one.
+  /// and forwards parsed [ProductInfo] objects to [productInfoStream].
   ///
   /// Product info includes:
   /// - Firmware version (major.minor.release.build)
   /// - Device model information
   ///
   /// Returns immediately if the product info characteristic is not available.
+  ///
+  /// Example:
+  /// ```dart
+  /// await bleService.startProductInfoStream();
+  /// bleService.productInfoStream.listen((info) {
+  ///   print('Firmware: ${info.firmwareVersion}');
+  /// });
+  /// ```
   Future<void> startProductInfoStream({
     void Function(Object e, StackTrace s)? errorCallback,
   }) async {
@@ -379,7 +423,8 @@ class MotiveBleService {
           .listen(
             (final List<int> data) {
               if (data.isNotEmpty && !_productInfoStreamController.isClosed) {
-                _productInfoStreamController.add(data);
+                final info = ProductInfo.fromRawData(data);
+                _productInfoStreamController.add(info);
               }
             },
             onError: (final dynamic error) {

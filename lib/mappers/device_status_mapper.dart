@@ -37,7 +37,7 @@
 /// - [MotiveBleService.statusStream] for receiving status data
 library;
 
-import 'package:my_motive_package/my_motive_package.dart';
+import 'package:my_motive_package/my_motive_library.dart';
 
 /// Mapper for parsing raw BLE device status data.
 ///
