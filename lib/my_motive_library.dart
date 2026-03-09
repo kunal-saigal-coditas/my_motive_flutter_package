@@ -37,6 +37,7 @@ library;
 
 // Core SDK
 export 'services/motive_ble_service.dart';
+export 'services/permission_service.dart';
 
 // Models
 export 'model/device_status_model.dart';

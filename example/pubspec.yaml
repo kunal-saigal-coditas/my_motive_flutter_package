@@ -1,0 +1,22 @@
+name: motive_example
+description: Example app demonstrating the my_motive_package.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  my_motive_package:
+    path: ../
+  flutter_blue_plus: ^1.36.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

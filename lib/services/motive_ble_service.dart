@@ -12,7 +12,8 @@ import 'package:my_motive_package/model/product_info_model.dart';
 /// with Motive controllers, including:
 /// - Service and characteristic discovery
 /// - Authentication code calculation
-/// - Status and product info streaming
+/// - Device status streaming (real-time)
+/// - Product info reading (one-time read)
 /// - Notification management
 ///
 /// ## Usage
@@ -34,7 +35,7 @@ import 'package:my_motive_package/model/product_info_model.dart';
 ///   print('Knee level: ${status.kneeStimLevel}');
 ///   print('Thigh level: ${status.thighStimLevel}');
 ///   print('Treatment active: ${status.isTreatmentActive}');
-///   
+///
 ///   if (status.isBatteryLow) {
 ///     showLowBatteryWarning();
 ///   }
@@ -101,13 +102,8 @@ class MotiveBleService {
   final StreamController<DeviceStatus> _statusStreamController =
       StreamController<DeviceStatus>.broadcast();
 
-  /// Stream controller for broadcasting parsed product info updates.
-  final StreamController<ProductInfo> _productInfoStreamController =
-      StreamController<ProductInfo>.broadcast();
-
   // Stream subscriptions
   StreamSubscription<List<int>>? _statusSubscription;
-  StreamSubscription<List<int>>? _productInfoSubscription;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Public Streams
@@ -143,7 +139,7 @@ class MotiveBleService {
   ///   print('Knee level: ${status.kneeStimLevel}');
   ///   print('Thigh level: ${status.thighStimLevel}');
   ///   print('Treatment active: ${status.isTreatmentActive}');
-  ///   
+  ///
   ///   if (status.isBatteryLow) {
   ///     showLowBatteryWarning();
   ///   }
@@ -151,32 +147,6 @@ class MotiveBleService {
   /// ```
   Stream<DeviceStatus> get statusStream => _statusStreamController.stream;
 
-  /// Stream of parsed [ProductInfo] updates from the device.
-  ///
-  /// This stream emits [ProductInfo] objects containing firmware version
-  /// information already parsed into readable properties.
-  ///
-  /// The product info includes:
-  /// - `major`, `minor`, `release`, `build`: Version components
-  /// - `firmwareVersion`: Formatted version string (e.g., "01.02.03.04")
-  /// - `shortVersion`: Short format (e.g., "1.2.3")
-  ///
-  /// Convenience methods:
-  /// - `meetsMinimumVersion(version)`: Check version compatibility
-  /// - `isNewerThan(other)` / `isOlderThan(other)`: Compare versions
-  ///
-  /// Example:
-  /// ```dart
-  /// bleService.productInfoStream.listen((info) {
-  ///   print('Firmware: ${info.firmwareVersion}');
-  ///   
-  ///   if (!info.meetsMinimumVersion('2.0.0')) {
-  ///     showUpdatePrompt();
-  ///   }
-  /// });
-  /// ```
-  Stream<ProductInfo> get productInfoStream =>
-      _productInfoStreamController.stream;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Getters
@@ -295,9 +265,8 @@ class MotiveBleService {
                 _controllerProductInfoCharacteristicUuid,
           );
 
-      // Start listening to status and product info streams
+      // Start listening to status stream
       await startStatusStream();
-      await startProductInfoStream();
     } catch (e, s) {
       errorCallback?.call(e, s);
       debugPrint('Error initializing Motive BLE service: $e');
@@ -384,112 +353,55 @@ class MotiveBleService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Product Info Stream Management
+  // Product Info (One-Time Read)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /// Starts listening to product info updates via BLE notifications.
+  /// Reads product info from the device as a one-time BLE read.
   ///
-  /// This method enables notifications on the product info characteristic
-  /// and forwards parsed [ProductInfo] objects to [productInfoStream].
+  /// Performs a direct read of the product info characteristic and returns
+  /// a parsed [ProductInfo] model containing firmware version details.
   ///
-  /// Product info includes:
-  /// - Firmware version (major.minor.release.build)
-  /// - Device model information
+  /// Returns [ProductInfo.unknown] if the characteristic is not available
+  /// or the read fails.
   ///
-  /// Returns immediately if the product info characteristic is not available.
+  /// The product info includes:
+  /// - `major`, `minor`, `release`, `build`: Version components
+  /// - `firmwareVersion`: Formatted version string (e.g., "01.02.03.04")
+  /// - `shortVersion`: Short format (e.g., "1.2.3")
+  ///
+  /// Convenience methods:
+  /// - `meetsMinimumVersion(version)`: Check version compatibility
+  /// - `isNewerThan(other)` / `isOlderThan(other)`: Compare versions
   ///
   /// Example:
   /// ```dart
-  /// await bleService.startProductInfoStream();
-  /// bleService.productInfoStream.listen((info) {
-  ///   print('Firmware: ${info.firmwareVersion}');
-  /// });
-  /// ```
-  Future<void> startProductInfoStream({
-    void Function(Object e, StackTrace s)? errorCallback,
-  }) async {
-    if (_controllerProductInfoCharacteristic == null) return;
-
-    try {
-      // Enable notifications
-      await _controllerProductInfoCharacteristic!.setNotifyValue(true);
-
-      // Cancel existing subscription if any
-      await _productInfoSubscription?.cancel();
-
-      // Listen to product info updates
-      _productInfoSubscription = _controllerProductInfoCharacteristic!
-          .lastValueStream
-          .listen(
-            (final List<int> data) {
-              if (data.isNotEmpty && !_productInfoStreamController.isClosed) {
-                final info = ProductInfo.fromRawData(data);
-                _productInfoStreamController.add(info);
-              }
-            },
-            onError: (final dynamic error) {
-              debugPrint('Product info stream error: $error');
-              errorCallback?.call(error, StackTrace.current);
-            },
-          );
-    } catch (e, s) {
-      errorCallback?.call(e, s);
-      debugPrint('Error starting product info stream: $e');
-    }
-  }
-
-  /// Stops listening to product info updates.
+  /// final info = await bleService.readProductInfo();
+  /// print('Firmware: ${info.firmwareVersion}');
   ///
-  /// This method cancels the product info subscription and disables
-  /// notifications on the characteristic to conserve device battery.
-  ///
-  /// Safe to call even if product info streaming was never started.
-  Future<void> stopProductInfoStream({
-    void Function(Object e, StackTrace s)? errorCallback,
-  }) async {
-    await _productInfoSubscription?.cancel();
-    _productInfoSubscription = null;
-
-    try {
-      await _controllerProductInfoCharacteristic?.setNotifyValue(false);
-    } catch (e, s) {
-      errorCallback?.call(e, s);
-      debugPrint('Error stopping product info notifications: $e');
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Direct Reads
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /// Reads product info directly from the device (one-time read).
-  ///
-  /// Use this method for an initial read of product info before notifications
-  /// are enabled, or when you need to explicitly request the current values.
-  ///
-  /// Returns the raw byte array containing product info data, or `null` if:
-  /// - The product info characteristic is not available
-  /// - The read operation fails
-  ///
-  /// Example:
-  /// ```dart
-  /// final data = await bleService.readProductInfo();
-  /// if (data != null) {
-  ///   final info = ProductInfoMapper.parse(data);
-  ///   print('Firmware version: ${info.firmwareVersion}');
+  /// if (!info.meetsMinimumVersion('2.0.0')) {
+  ///   showUpdatePrompt();
   /// }
   /// ```
-  Future<List<int>?> readProductInfo({
+  Future<ProductInfo> readProductInfo({
     void Function(Object e, StackTrace s)? errorCallback,
   }) async {
-    if (_controllerProductInfoCharacteristic == null) return null;
+    if (_controllerProductInfoCharacteristic == null) {
+      debugPrint('[BLE] Product info characteristic not available');
+      return ProductInfo.unknown();
+    }
 
     try {
-      return await _controllerProductInfoCharacteristic!.read();
+      final List<int> data =
+          await _controllerProductInfoCharacteristic!.read();
+      debugPrint('[BLE] Product info raw data: $data (${data.length} bytes)');
+
+      if (data.isEmpty) return ProductInfo.unknown();
+
+      return ProductInfo.fromRawData(data);
     } catch (e, s) {
       errorCallback?.call(e, s);
-      debugPrint('Error reading product info: $e');
-      return null;
+      debugPrint('[BLE] Error reading product info: $e');
+      return ProductInfo.unknown();
     }
   }
 
@@ -517,13 +429,9 @@ class MotiveBleService {
   /// ```
   Future<void> dispose() async {
     await stopStatusStream();
-    await stopProductInfoStream();
 
     if (!_statusStreamController.isClosed) {
       await _statusStreamController.close();
-    }
-    if (!_productInfoStreamController.isClosed) {
-      await _productInfoStreamController.close();
     }
 
     _controllerCommandCharacteristic = null;
