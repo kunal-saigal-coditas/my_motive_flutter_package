@@ -226,6 +226,9 @@ class MotiveBleService {
         return;
       }
 
+      // Store device reference for later disconnect
+      this.device = device;
+
       final List<BluetoothService> services = await device.discoverServices();
       _authCode = BleCommandUtils.calculateAuthCode(manufacturerData);
 
@@ -432,6 +435,13 @@ class MotiveBleService {
 
     if (!_statusStreamController.isClosed) {
       await _statusStreamController.close();
+    }
+
+    // Disconnect the BLE device before clearing references
+    try {
+      await device?.disconnect();
+    } catch (e) {
+      debugPrint('[BLE] Error disconnecting device: $e');
     }
 
     _controllerCommandCharacteristic = null;
